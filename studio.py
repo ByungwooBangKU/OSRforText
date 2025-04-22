@@ -253,10 +253,10 @@ class DataModule(pl.LightningDataModule):
             print("Loading ChemProt dataset...")
             texts, labels, self.class_names = prepare_chemprot_dataset()
         # Add other dataset loading logic here
-        # elif self.dataset_name == "custom_syslog":
-        #     self._setup_custom_syslog() # Specific logic for syslog
-        #     print("--- Finished DataModule setup ---")
-        #     return
+        elif self.dataset_name == "custom_syslog":
+            self._setup_custom_syslog() # Specific logic for syslog
+            print("--- Finished DataModule setup ---")
+            return
         else:
             raise ValueError(f"Unknown dataset: {self.dataset_name}")
 
@@ -1963,44 +1963,66 @@ def _prepare_evaluation(method_name, current_model, datamodule, args, osr_algori
     return model_to_evaluate_finally # Return the model ready for final evaluation
 
 # --- Main Evaluation Functions per Method (Simplified) ---
+
 def evaluate_threshold_osr(base_model, datamodule, args, all_results):
+    """Evaluates Threshold OSR, handles tuning."""
+    # _prepare_evaluation ensures the model is RobertaClassifier and handles tuning/params
     model = _prepare_evaluation('threshold', base_model, datamodule, args, ThresholdOSR)
-    evaluator = ThresholdOSR(model, datamodule, args)
+    evaluator = ThresholdOSR(model, datamodule, args) # Use final args
     results = evaluator.evaluate(datamodule.test_dataloader())
     evaluator.visualize(results)
     all_results["threshold"] = results
     return results
 
 def evaluate_openmax_osr(base_model, datamodule, args, all_results):
+    """Evaluates OpenMax OSR, handles tuning."""
+    # _prepare_evaluation ensures the model is RobertaClassifier and handles tuning/params
     model = _prepare_evaluation('openmax', base_model, datamodule, args, OpenMaxOSR)
-    evaluator = OpenMaxOSR(model, datamodule, args)
+    evaluator = OpenMaxOSR(model, datamodule, args) # Use final args
     results = evaluator.evaluate(datamodule.test_dataloader())
     evaluator.visualize(results)
     all_results["openmax"] = results
     return results
 
 def evaluate_crosr_osr(base_model, datamodule, args, all_results):
+    """Evaluates CROSR OSR, handles tuning and model training."""
+    # _prepare_evaluation ensures the model is RobertaAutoencoder and handles tuning/params
     model = _prepare_evaluation('crosr', base_model, datamodule, args, CROSROSR)
-    evaluator = CROSROSR(model, datamodule, args)
+    evaluator = CROSROSR(model, datamodule, args) # Use final args
     results = evaluator.evaluate(datamodule.test_dataloader())
     evaluator.visualize(results)
     all_results["crosr"] = results
     return results
 
 def evaluate_doc_osr(base_model, datamodule, args, all_results):
+    """Evaluates DOC OSR, handles tuning and model training."""
+    # _prepare_evaluation ensures the model is DOCRobertaClassifier and handles tuning/params
     model = _prepare_evaluation('doc', base_model, datamodule, args, DOCOSR)
-    evaluator = DOCOSR(model, datamodule, args)
+    evaluator = DOCOSR(model, datamodule, args) # Use final args
     results = evaluator.evaluate(datamodule.test_dataloader())
     evaluator.visualize(results)
     all_results["doc"] = results
     return results
 
 def evaluate_adb_osr(base_model, datamodule, args, all_results):
-    model = _prepare_evaluation('adb', base_model, datamodule, args, ADBOSR)
-    evaluator = ADBOSR(model, datamodule, args)
+    """Evaluates ADB OSR, handles tuning and model training."""
+    # --- 수정된 부분 ---
+    # 1. _prepare_evaluation 호출:
+    #    - 이 함수는 필요 시 RobertaADB 모델을 학습/재학습하고,
+    #    - 튜닝이 활성화된 경우 Optuna를 실행하며 (내부적으로 모델 재학습 포함),
+    #    - 최종적으로 평가에 사용할 모델 객체와 업데이트된 args를 반환합니다.
+    #    - osr_algorithm_class 인자로 ADBOSR을 전달합니다.
+    model_for_eval = _prepare_evaluation('adb', base_model, datamodule, args, ADBOSR)
+
+    # 2. 최종 평가:
+    #    - _prepare_evaluation에서 반환된 모델과 업데이트된 args를 사용하여
+    #      ADBOSR 평가자(evaluator)를 생성하고 최종 평가를 수행합니다.
+    print("\n--- Running Final ADB Evaluation with Best/Default Parameters ---")
+    evaluator = ADBOSR(model_for_eval, datamodule, args) # Use the prepared model and final args
     results = evaluator.evaluate(datamodule.test_dataloader())
     evaluator.visualize(results)
     all_results["adb"] = results
+    # --- ---
     return results
 
 
