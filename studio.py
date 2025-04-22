@@ -652,9 +652,7 @@ class DOCRobertaClassifier(pl.LightningModule):
         )
         return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'interval': 'step'}}
 
-
 class RobertaADB(pl.LightningModule):
-    """RoBERTa model with Adaptive Decision Boundary (ADB) components."""
     """RoBERTa model with Adaptive Decision Boundary (ADB) components."""
     def __init__( self, model_name: str = "roberta-base", num_classes: int = 20, learning_rate: float = 1e-3,
                   weight_decay: float = 0.0, warmup_steps: int = 0, total_steps: int = 0,
@@ -743,7 +741,6 @@ class RobertaADB(pl.LightningModule):
         self.log("avg_radius", avg_radius, on_step=False, on_epoch=True, logger=True)
         # --- ---
         return loss
-    
 
     def validation_step(self, batch, batch_idx):
         labels = batch["label"]
@@ -809,7 +806,6 @@ class RobertaADB(pl.LightningModule):
         else:
              print("[ADB Optim] No learning rate scheduler used.")
              return optimizer
-
 
 # =============================================================================
 # OSR Algorithms (Base Class, ThresholdOSR, OpenMaxOSR, CROSROSR, DOCOSR, ADBOSR)
@@ -2181,7 +2177,7 @@ def parse_args():
     parser.add_argument('-param_adb_distance', type=str, default='cosine', choices=['cosine', 'euclidean'], help='Distance metric for ADB.')
     parser.add_argument('-param_adb_delta', type=float, default=0.1, help='Margin delta for ADB training loss.')
     parser.add_argument('-param_adb_alpha', type=float, default=0.1, help='Weight alpha for ADB training loss.')
-    parser.add_argument('--adb_freeze_backbone', action=argparse.BooleanOptionalAction, default=True, help='Freeze backbone during ADB training.')
+    parser.add_argument('-adb_freeze_backbone', action=argparse.BooleanOptionalAction, default=True, help='Freeze backbone during ADB training.')
     # --- Hyperparameter Tuning Arguments ---
     parser.add_argument('-parameter_search', action='store_true', help='Enable Optuna hyperparameter tuning.')
     parser.add_argument('-tuning_metric', type=str, default='f1_score', choices=['accuracy', 'auroc', 'f1_score', 'unknown_detection_rate'], help='Metric to optimize during tuning.')

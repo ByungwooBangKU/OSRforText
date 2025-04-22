@@ -1,0 +1,102 @@
+{
+  "threshold": {
+    "accuracy": 0.9883268482490273,
+    "auroc": 0.9969174794077518,
+    "f1_score": 0.9308104404906044,
+    "unknown_detection_rate": 0.7402597402597403,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "business",
+      "entertainment",
+      "politics",
+      "tech"
+    ]
+  },
+  "openmax": {
+    "accuracy": 0.953307392996109,
+    "auroc": 0.9602304310475516,
+    "f1_score": 0.966322263829014,
+    "unknown_detection_rate": 1.0,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "business",
+      "entertainment",
+      "politics",
+      "tech"
+    ]
+  },
+  "crosr": {
+    "accuracy": 0.9182879377431906,
+    "auroc": 0.8797816969023194,
+    "f1_score": 0.8872375398172958,
+    "unknown_detection_rate": 0.7792207792207793,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "business",
+      "entertainment",
+      "politics",
+      "tech"
+    ]
+  },
+  "doc": {
+    "accuracy": 0.9688715953307393,
+    "auroc": 0.9956036181717116,
+    "f1_score": 0.9748640691955565,
+    "unknown_detection_rate": 0.987012987012987,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "business",
+      "entertainment",
+      "politics",
+      "tech"
+    ]
+  },
+  "adb": {
+    "accuracy": 0.0,
+    "auroc": 0.6452069331446764,
+    "f1_score": 0.07493917274939173,
+    "unknown_detection_rate": 1.0,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "business",
+      "entertainment",
+      "politics",
+      "tech"
+    ]
+  }
+}

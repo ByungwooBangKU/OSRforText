@@ -97,17 +97,21 @@ class OptunaHyperparameterTuner:
 
         # --- ADB OSR ---
         elif self.method_name == 'adb':
-            # These parameters affect the training of the ADB model itself.
-            # If tuning them, the ADB model should ideally be retrained in each trial.
-            # If the ADB model is pre-trained, tuning these here has no effect on evaluation.
-            # Assuming pre-trained ADB model for simplicity here. If retraining needed, modify the objective.
-            # We *can* tune parameters that affect *evaluation*, like the distance metric if desired.
-             params['param_adb_distance'] = trial.suggest_categorical('param_adb_distance', ['cosine', 'euclidean'])
-             print(f"  Suggesting param_adb_distance: ['cosine', 'euclidean']")
-            # If tuning training parameters:
-            # params['param_adb_delta'] = trial.suggest_float('param_adb_delta', 0.05, 0.5, step=0.05)
-            # params['param_adb_alpha'] = trial.suggest_float('param_adb_alpha', 0.05, 0.5, step=0.05)
+            # --- 평가 시점 파라미터 ---
+            params['param_adb_distance'] = trial.suggest_categorical('param_adb_distance', ['cosine', 'euclidean'])
+            print(f"  Suggesting param_adb_distance: ['cosine', 'euclidean']")
 
+            # --- 학습 시점 파라미터 (모델 재학습 필요 시 사용) ---
+            # 주석 해제 및 범위 설정
+            params['lr_adb'] = trial.suggest_float('lr_adb', 1e-4, 5e-3, log=True)
+            params['param_adb_delta'] = trial.suggest_float('param_adb_delta', 0.05, 0.4, step=0.05) # 범위 약간 조정
+            params['param_adb_alpha'] = trial.suggest_float('param_adb_alpha', 0.01, 0.5, log=True)
+            params['adb_freeze_backbone'] = trial.suggest_categorical('adb_freeze_backbone', [True, False])
+            print(f"  Suggesting lr_adb: [1e-4, 5e-3]")
+            print(f"  Suggesting param_adb_delta: [0.05, 0.4]")
+            print(f"  Suggesting param_adb_alpha: [0.01, 0.5]")
+            print(f"  Suggesting adb_freeze_backbone: [True, False]")
+            # --- ---
         else:
             print(f"  Warning: No specific search space defined for method '{self.method_name}'.")
 
@@ -377,23 +381,26 @@ def get_default_best_params(method_name):
     print(f"[Parameter Loading] Getting default parameters for method '{method_name}'...")
     defaults = {}
     if method_name == 'threshold':
-        # Common baseline practice
         defaults = {'param_threshold': 0.5}
     elif method_name == 'openmax':
-        # From Bendale & Boult, CVPR 2016 (Values often tuned per dataset)
         defaults = {'param_openmax_tailsize': 50, 'param_openmax_alpha': 10}
     elif method_name == 'crosr':
-        # From Yoshihashi et al., ICCV 2019 (Values often tuned)
         defaults = {'param_crosr_reconstruction_threshold': 0.9, 'param_crosr_tailsize': 100}
     elif method_name == 'doc':
-        # From Shu et al., EMNLP 2017 (They use k=3, which is the default we'll set)
         defaults = {'param_doc_k': 3.0}
     elif method_name == 'adb':
-        # From Zhang et al., AAAI 2021 (They learn params; defaults are tricky)
-        # Distance is usually cosine for text embeddings. Delta/Alpha affect training.
-        defaults = {'param_adb_distance': 'cosine'} # Delta/Alpha defaults are in argparse
+        # --- ADB 기본값 설정 ---
+        defaults = {
+            'param_adb_distance': 'cosine', # 평가 시 사용
+            # 아래는 학습 관련 파라미터의 기본값 (argparse와 일치시키거나 논문 기반 값 사용)
+            'lr_adb': 5e-4, # argparse의 기본값과 일치시킴 (또는 실험적으로 찾은 값)
+            'param_adb_delta': 0.1,
+            'param_adb_alpha': 0.1,
+            'adb_freeze_backbone': True
+        }
+        # --- ---
+    else:
+         print(f"  Warning: No defaults defined for method '{method_name}'.")
 
-    print(f"  Defaults: {defaults}")
+    print(f"  Defaults for {method_name}: {defaults}")
     return defaults
-
-# --- END OF FILE hyperparameter_tuning.py ---
