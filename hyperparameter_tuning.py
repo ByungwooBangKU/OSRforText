@@ -118,144 +118,83 @@ class OptunaHyperparameterTuner:
         return params
 
     def _objective(self, trial):
-        """
-        Optuna trial objective function. Executes one evaluation run.
-        """
-        # 1. Get suggested hyperparameters for this trial
+        """Optuna trial objective function."""
+        # 1. Get suggested hyperparameters
         params = self._define_search_space(trial)
-
-        # 2. Create a temporary args object for this trial
         trial_args = argparse.Namespace(**vars(self.args))
-        for param_name, param_value in params.items():
-            setattr(trial_args, param_name, param_value)
-
-        # 3. Log the parameters being tested
-        param_items = []
         for name, value in params.items():
-            # 값의 타입에 따라 서식 지정
-            if isinstance(value, float):
-                # 소수점 4자리까지 표시 (필요에 따라 조절)
-                param_items.append(f"{name.replace('param_', '')}={value:.4f}")
-            else:
-                param_items.append(f"{name.replace('param_', '')}={value}")
-        param_str = ", ".join(param_items)
+            setattr(trial_args, name, value)
+
+        param_str = ", ".join([f"{name.replace('param_', '').replace('lr_adb','LR').replace('adb_','')}"
+                               f"={value:.4f}" if isinstance(value, float) else f"{name.replace('param_', '').replace('lr_adb','LR').replace('adb_','')}={value}"
+                               for name, value in params.items()])
         print(f"\n--- Optuna Trial {trial.number + 1}/{self.n_trials} ---")
-        print(f"Method: {self.method_name.upper()}, Params: {param_str}") # 수정된 param_str 사용
+        print(f"Method: {self.method_name.upper()}, Params: {param_str}")
 
         try:
-            # 4. Execute the evaluation function provided during `tune()`
-            # --- 수정된 부분: 튜플 반환값 처리 ---
-            # evaluation_func는 (results_dict, score_float) 튜플을 반환
-            results_dict, score_float = self.evaluation_func(trial_args)
-            # ---------------------------------
+            # --- 수정: model_training_and_evaluation_func 호출 ---
+            # 이 함수는 모델 학습 + 평가를 모두 수행하고 결과 딕셔너리와 점수를 반환해야 함
+            results_dict, score_float = self.model_training_and_evaluation_func(trial_args)
+            # --- ---
 
-            # 5. Validate the returned score
             if score_float is None or not np.isfinite(score_float):
-                print(f"Warning: Invalid score ({score_float}) returned from evaluation function. Returning failure score.")
-                # Store NaN or None in user attributes if the score is invalid
+                print(f"Warning: Invalid score ({score_float}). Failure.")
+                # Store NaN/None in user attributes
                 valid_metrics = ['accuracy', 'auroc', 'f1_score', 'unknown_detection_rate']
                 for metric_name in valid_metrics:
                      metric_value = results_dict.get(metric_name, float('nan'))
                      trial.set_user_attr(metric_name, float(metric_value) if pd.notna(metric_value) else None)
-                return -1e9 # Return a very low score for maximization problems
+                return -1e9
 
-            # 6. Store all relevant metrics in trial user attributes
+            # Store metrics
             valid_metrics = ['accuracy', 'auroc', 'f1_score', 'unknown_detection_rate']
             print("Trial Results:")
             for metric_name in valid_metrics:
-                # Use results_dict here
                 metric_value = results_dict.get(metric_name, float('nan'))
                 trial.set_user_attr(metric_name, float(metric_value) if pd.notna(metric_value) else None)
                 print(f"  {metric_name}: {metric_value:.4f}")
 
             print(f"--> Trial {trial.number + 1} Score ({self.metric}): {score_float:.4f}")
-            # Return the score directly
             return score_float
 
         except Exception as e:
             print(f"Error during Optuna trial {trial.number + 1}: {e}")
             import traceback
             traceback.print_exc()
-            # Report failure to Optuna
-            return -1e9
+            return -1e9 # Report failure
 
+    def tune(self, model_training_and_evaluation_func): # 인자 이름 변경
+        """Performs hyperparameter optimization including model retraining per trial."""
+        # --- 수정: evaluation_func 대신 model_training_and_evaluation_func 저장 ---
+        self.model_training_and_evaluation_func = model_training_and_evaluation_func
+        # --- ---
 
-
-    def tune(self, evaluation_func):
-        """
-        Performs hyperparameter optimization using Optuna.
-
-        Args:
-            evaluation_func: A function that takes an `args` namespace (potentially
-                             modified with trial parameters) and returns a dictionary
-                             of evaluation metrics.
-        """
-        self.evaluation_func = evaluation_func
-
-        print(f"\n[Hyperparameter Tuning] Starting Optuna for {self.method_name.upper()}")
+        print(f"\n[Hyperparameter Tuning] Starting Optuna for {self.method_name.upper()} (with retraining per trial)")
         print(f"Optimizing metric: {self.metric}")
         print(f"Number of trials: {self.n_trials}")
 
-        # Create or load the study
         self.study = self._create_study()
 
-        # Start the optimization process
         try:
-            self.study.optimize(
-                self._objective,
-                n_trials=self.n_trials,
-                show_progress_bar=True,
-                # Consider adding timeout if trials can hang
-                # timeout=600 # Example: 10 minutes per trial
-            )
-        except KeyboardInterrupt:
-             print("\nOptimization stopped by user.")
-        except Exception as e:
-            print(f"\nError during optimization: {e}")
+            self.study.optimize(self._objective, n_trials=self.n_trials, show_progress_bar=True)
+        except KeyboardInterrupt: print("\nOptimization stopped by user.")
+        except Exception as e: print(f"\nError during optimization: {e}")
 
-
-        # --- Process Results ---
-        if not self.study.trials:
-             print("No trials completed. Cannot determine best parameters.")
-             return {}, {} # Return empty dicts
-
-        # Handle cases where no trial completed successfully
+        # --- 결과 처리 (기존과 유사) ---
+        if not self.study.trials: print("No trials completed."); return {}, {}
         completed_trials = [t for t in self.study.trials if t.state == optuna.trial.TrialState.COMPLETE and t.value is not None and t.value > -1e8]
         if not completed_trials:
-            print("Warning: No trials completed successfully. Cannot determine best parameters.")
-            # Optionally return defaults or raise error
-            self.best_params = get_default_best_params(self.method_name)
-            self.best_trial_results = {}
-            self.best_score = -float('inf')
+            print("Warning: No trials completed successfully."); self.best_params = get_default_best_params(self.method_name); self.best_trial_results = {}; self.best_score = -float('inf')
         else:
-             # Get the best trial based on the objective value
-             best_trial = self.study.best_trial
-             self.best_params = best_trial.params
-             self.best_score = best_trial.value
-             # Retrieve stored metrics from the best trial's user attributes
-             self.best_trial_results = {
-                 metric: best_trial.user_attrs.get(metric, None)
-                 for metric in ['accuracy', 'auroc', 'f1_score', 'unknown_detection_rate']
-             }
-
-
-             print(f"\n--- Optuna Tuning Finished for {self.method_name.upper()} ---")
-             print(f"Best Trial Number: {best_trial.number + 1}")
-             print(f"Best Parameters Found:")
-             for name, value in self.best_params.items():
-                  print(f"  {name.replace('param_', '')}: {value}")
-             print(f"Best Score ({self.metric}): {self.best_score:.4f}")
-             print("Metrics for Best Trial:")
-             for name, value in self.best_trial_results.items():
-                  print(f"  {name}: {value if value is not None else 'N/A'}")
-
-             # Save results and visualize
-             self._save_tuning_results()
-             self._visualize_tuning_results()
-
+            best_trial = self.study.best_trial; self.best_params = best_trial.params; self.best_score = best_trial.value
+            self.best_trial_results = { m: best_trial.user_attrs.get(m, None) for m in ['accuracy', 'auroc', 'f1_score', 'unknown_detection_rate'] }
+            print(f"\n--- Optuna Tuning Finished for {self.method_name.upper()} ---")
+            print(f"Best Trial: {best_trial.number + 1}, Best Score ({self.metric}): {self.best_score:.4f}")
+            print("Best Parameters:"); [print(f"  {k.replace('param_', '')}: {v}") for k, v in self.best_params.items()]
+            print("Metrics for Best Trial:"); [print(f"  {k}: {v if v is not None else 'N/A'}") for k, v in self.best_trial_results.items()]
+            self._save_tuning_results(); self._visualize_tuning_results()
         return self.best_params, self.best_trial_results
-
-
+    
     def _save_tuning_results(self):
         """Saves the tuning results to a JSON file and the study object."""
         if self.study is None or self.best_params is None:
