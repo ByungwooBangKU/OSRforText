@@ -655,6 +655,7 @@ class DOCRobertaClassifier(pl.LightningModule):
 
 class RobertaADB(pl.LightningModule):
     """RoBERTa model with Adaptive Decision Boundary (ADB) components."""
+    """RoBERTa model with Adaptive Decision Boundary (ADB) components."""
     def __init__( self, model_name: str = "roberta-base", num_classes: int = 20, learning_rate: float = 1e-3,
                   weight_decay: float = 0.0, warmup_steps: int = 0, total_steps: int = 0,
                   delta: float = 0.1, alpha: float = 0.1, freeze_backbone: bool = True ):
@@ -663,44 +664,59 @@ class RobertaADB(pl.LightningModule):
         self.config = RobertaConfig.from_pretrained(model_name)
         self.roberta = RobertaModel.from_pretrained(model_name, config=self.config)
         self.feat_dim = self.config.hidden_size
-        # Learnable centers and radii
-        self.centers = nn.Parameter(torch.empty(num_classes, self.feat_dim), requires_grad=True)
-        self.radii = nn.Parameter(torch.empty(num_classes), requires_grad=True) # Learn radius directly
-        nn.init.normal_(self.centers, std=0.05)
-        # Initialize radii (e.g., corresponding to cosine distance 0.1-0.3)
-        # Radius here is the *distance* boundary. Smaller radius = tighter boundary.
-        nn.init.uniform_(self.radii, 0.1, 0.3)
 
-        self.learning_rate = learning_rate
+        # Learnable centers
+        self.centers = nn.Parameter(torch.empty(num_classes, self.feat_dim), requires_grad=True)
+        nn.init.normal_(self.centers, std=0.05)
+
+        # --- 수정: Radii 대신 Logits for Radii (Delta' in paper) 학습 ---
+        # Softplus(delta_prime) = Delta (Radius) -> ensures Radius > 0
+        # Initialize delta_prime such that initial radius is around 0.1-0.3
+        # softplus(x) = log(1+exp(x)). If we want softplus(x) ~ 0.2, exp(x) ~ exp(0.2)-1 ~ 0.22. x ~ log(0.22) ~ -1.5
+        initial_delta_prime = -1.5
+        self.delta_prime = nn.Parameter(torch.full((num_classes,), initial_delta_prime), requires_grad=True)
+        # --- ---
+
+        self.learning_rate = learning_rate # LR for centers and delta_prime
         self.weight_decay = weight_decay
         self.warmup_steps = warmup_steps
         self.total_steps = total_steps
-        self.delta = delta
-        self.alpha = alpha
+        self.delta = delta # Margin for ADB loss
+        self.alpha = alpha # Weight for ADB loss
         self.num_classes = num_classes
         self.freeze_backbone = freeze_backbone
         if self.freeze_backbone:
             print("[RobertaADB Init] Freezing RoBERTa backbone parameters.")
-            for param in self.roberta.parameters():
-                param.requires_grad = False
-        else:
-             print("[RobertaADB Init] RoBERTa backbone parameters will be fine-tuned.")
+            for param in self.roberta.parameters(): param.requires_grad = False
+        else: print("[RobertaADB Init] RoBERTa backbone parameters will be fine-tuned.")
+
+    # --- 수정: get_radii 메서드 추가 ---
+    def get_radii(self):
+        """Calculate actual radii using Softplus."""
+        return F.softplus(self.delta_prime)
+    # --- ---
 
     @staticmethod
     def _cosine_distance(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        """Calculates pairwise cosine distance (1 - similarity). Input assumed normalized."""
-        # x_norm = F.normalize(x, p=2, dim=-1) # Input x (features) already normalized
-        y_norm = F.normalize(y, p=2, dim=-1) # Normalize y (centers)
+        """Calculates pairwise cosine distance (1 - similarity). Input x assumed normalized."""
+        y_norm = F.normalize(y, p=2, dim=-1)
         similarity = torch.matmul(x, y_norm.t())
+        # Clamp similarity to avoid numerical issues with acos or 1.0 - sim
+        similarity = torch.clamp(similarity, -1.0 + 1e-7, 1.0 - 1e-7)
         distance = 1.0 - similarity
         return distance
 
     def adb_margin_loss(self, feat_norm: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
         """Calculates ADB margin loss: max(0, d(feat, c_y) - r_y + delta)."""
-        distances = self._cosine_distance(feat_norm, self.centers) # feat_norm is already normalized
+        distances = self._cosine_distance(feat_norm, self.centers) # feat_norm is normalized
         d_y = distances[torch.arange(feat_norm.size(0), device=self.device), labels]
-        # Ensure radii are positive during loss calculation using ReLU
-        r_y = F.relu(self.radii[labels])
+
+        # --- 수정: get_radii() 사용 ---
+        radii = self.get_radii() # Get positive radii via Softplus
+        r_y = radii[labels]
+        # --- ---
+
+        # Loss = max(0, distance_to_correct_center - radius_of_correct_center + margin)
         loss_per_sample = torch.relu(d_y - r_y + self.delta)
         loss = loss_per_sample.mean()
         return loss
@@ -710,9 +726,8 @@ class RobertaADB(pl.LightningModule):
         with torch.set_grad_enabled(not self.freeze_backbone):
             outputs = self.roberta(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
         feat = outputs.last_hidden_state[:, 0, :]
-        feat_norm = F.normalize(feat, p=2, dim=-1) # Normalize features
-        # Logits = cosine similarity to centers
-        logits = 1.0 - self._cosine_distance(feat_norm, self.centers) # feat_norm is already normalized
+        feat_norm = F.normalize(feat, p=2, dim=-1)
+        logits = 1.0 - self._cosine_distance(feat_norm, self.centers)
         return logits, feat_norm
 
     def training_step(self, batch, batch_idx):
@@ -723,9 +738,12 @@ class RobertaADB(pl.LightningModule):
         loss = ce_loss + self.alpha * adb_loss
         self.log_dict({'train_loss': loss, 'train_ce_loss': ce_loss, 'train_adb_loss': adb_loss},
                       prog_bar=True, on_step=True, on_epoch=True, logger=True)
-        avg_radius = F.relu(self.radii).mean().item() # Log positive radius
+        # --- 수정: Log actual radius ---
+        avg_radius = self.get_radii().mean().item()
         self.log("avg_radius", avg_radius, on_step=False, on_epoch=True, logger=True)
+        # --- ---
         return loss
+    
 
     def validation_step(self, batch, batch_idx):
         labels = batch["label"]
@@ -762,24 +780,25 @@ class RobertaADB(pl.LightningModule):
             'logits': logits,      # Similarity-based logits
             'features': feat_norm # Normalized features (crucial for ADB eval)
         }
-
+        
     def configure_optimizers(self):
-        """Configure optimizer (potentially different LR for backbone vs ADB params)."""
+        """Configure optimizer."""
         params_to_optimize = []
         if not self.freeze_backbone:
-             # Use smaller LR for backbone fine-tuning
-             # Find backbone LR from args if specified, else use a fraction of main LR
-             backbone_lr = getattr(self.hparams, 'lr', 2e-5) # Use the general LR from args if needed
+             backbone_lr = getattr(self.hparams, 'lr', 2e-5) # General LR for backbone
              params_to_optimize.append({'params': self.roberta.parameters(), 'lr': backbone_lr})
              print(f"[ADB Optim] Fine-tuning RoBERTa with LR: {backbone_lr}")
-        # Always optimize centers and radii with the specified ADB learning rate
+
+        # Optimize centers and delta_prime (for radii) with the specific ADB LR
         params_to_optimize.append({'params': self.centers, 'lr': self.learning_rate})
-        params_to_optimize.append({'params': self.radii, 'lr': self.learning_rate})
-        print(f"[ADB Optim] Optimizing centers/radii with LR: {self.learning_rate}")
+        # --- 수정: radii 대신 delta_prime 최적화 ---
+        params_to_optimize.append({'params': self.delta_prime, 'lr': self.learning_rate})
+        # --- ---
+        print(f"[ADB Optim] Optimizing centers/delta_prime with LR: {self.learning_rate}")
 
         optimizer = AdamW(params_to_optimize, weight_decay=self.weight_decay)
 
-        # Scheduler only if fine-tuning backbone and total_steps > 0
+        # Scheduler logic remains the same
         if not self.freeze_backbone and self.total_steps > 0:
              actual_warmup_steps = min(self.warmup_steps, self.total_steps)
              scheduler = get_linear_schedule_with_warmup(
@@ -790,6 +809,7 @@ class RobertaADB(pl.LightningModule):
         else:
              print("[ADB Optim] No learning rate scheduler used.")
              return optimizer
+
 
 # =============================================================================
 # OSR Algorithms (Base Class, ThresholdOSR, OpenMaxOSR, CROSROSR, DOCOSR, ADBOSR)
@@ -1565,7 +1585,11 @@ class DOCOSR(OSRAlgorithm):
         print("[DOCOSR Visualize] Finished.")
 
 
+# --- START OF studio.py (ADBOSR fix only) ---
+# ... (imports and other classes) ...
+
 class ADBOSR(OSRAlgorithm):
+    """OSR algorithm using Adaptive Decision Boundaries (ADB)."""
     def __init__(self, model, datamodule, args):
         if not isinstance(model, RobertaADB): raise TypeError("ADBOSR needs RobertaADB.")
         super().__init__(model, datamodule, args)
@@ -1577,18 +1601,23 @@ class ADBOSR(OSRAlgorithm):
         if self.distance_metric == 'cosine':
             centers_norm = F.normalize(centers, p=2, dim=-1)
             similarity = torch.matmul(features_norm, centers_norm.t())
+            similarity = torch.clamp(similarity, -1.0 + 1e-7, 1.0 - 1e-7) # Clamp for stability
             return 1.0 - similarity
         elif self.distance_metric == 'euclidean':
-             # Need unnormalized centers if using Euclidean with normalized features? Or normalize both?
-             # Let's assume we compare normalized features to learnable (potentially unnormalized) centers via Euclidean.
-             return torch.cdist(features_norm, centers, p=2)
+             # Ensure centers are also normalized if comparing normalized features
+             centers_norm = F.normalize(centers, p=2, dim=-1)
+             return torch.cdist(features_norm, centers_norm, p=2)
         else: raise ValueError(f"Unknown distance: {self.distance_metric}")
 
-    def predict(self, dataloader):
+    def predict(self, dataloader) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         self.model.eval().to(self.device)
         all_features = []; all_distances = []; all_preds_final = []; all_labels = []; all_min_distances = []
+
         centers = self.model.centers.detach()
-        radii = F.relu(self.model.radii.detach()) # Use positive radii for rejection check
+        # --- 수정: get_radii() 사용 ---
+        # Calculate positive radii using the same method as in training
+        radii = self.model.get_radii().detach()
+        # --- ---
 
         with torch.no_grad():
             for batch in tqdm(dataloader, desc="Predicting (ADB OSR)"):
@@ -1598,20 +1627,26 @@ class ADBOSR(OSRAlgorithm):
                 _, features_norm = self.model(ids, attn, tok) # Get normalized features
 
                 distances_batch = self.compute_distances(features_norm, centers) # B x C
-                min_distances_batch, closest_indices_batch = torch.min(distances_batch, dim=1) # Indices are 0..N-1
-                closest_radii_batch = radii[closest_indices_batch]
+                min_distances_batch, closest_indices_batch = torch.min(distances_batch, dim=1) # Indices 0..N-1
+                closest_radii_batch = radii[closest_indices_batch] # Use calculated positive radii
 
                 pred_indices_np = closest_indices_batch.cpu().numpy()
                 min_distances_np = min_distances_batch.cpu().numpy()
                 closest_radii_np = closest_radii_batch.cpu().numpy()
 
                 batch_preds_final = np.full_like(pred_indices_np, -1)
-                accept_mask = min_distances_np <= closest_radii_np # Accept if distance <= radius
+                # Accept if distance <= radius
+                accept_mask = min_distances_np <= closest_radii_np
 
                 if np.any(accept_mask):
                     accepted_indices = pred_indices_np[accept_mask]
-                    original_indices = self.datamodule.original_seen_indices[accepted_indices]
-                    batch_preds_final[accept_mask] = original_indices
+                    # Map 0..N-1 back to original seen indices
+                    if self.datamodule.original_seen_indices is not None:
+                         original_indices = self.datamodule.original_seen_indices[accepted_indices]
+                         batch_preds_final[accept_mask] = original_indices
+                    else: # Fallback if original indices not found
+                         print("Warning: original_seen_indices not found in datamodule for ADB mapping.")
+                         batch_preds_final[accept_mask] = accepted_indices # Use internal index as fallback
 
                 all_features.append(features_norm.cpu().numpy())
                 all_distances.append(distances_batch.cpu().numpy())
@@ -1623,9 +1658,12 @@ class ADBOSR(OSRAlgorithm):
                (np.concatenate(all_distances) if all_distances else np.array([])), \
                np.array(all_preds_final), np.array(all_labels), np.array(all_min_distances)
 
-
-    def evaluate(self, dataloader):
+    # evaluate and visualize methods remain the same...
+    def evaluate(self, dataloader) -> dict:
+        # ... (previous evaluate implementation) ...
         all_features, all_distances, all_preds, all_labels, all_min_distances = self.predict(dataloader)
+        if len(all_labels) == 0: print("Warning: No data to evaluate for ADB."); return {'accuracy': 0, 'auroc': float('nan'), 'f1_score': 0, 'unknown_detection_rate': 0}
+
         unknown_labels_mask = self.datamodule._determine_unknown_labels(all_labels)
         unknown_preds_mask = (all_preds == -1); known_mask = ~unknown_labels_mask
 
@@ -1633,14 +1671,17 @@ class ADBOSR(OSRAlgorithm):
         unknown_correct = np.sum(unknown_preds_mask & unknown_labels_mask)
         unknown_total = np.sum(unknown_labels_mask)
         unknown_detection_rate = unknown_correct / unknown_total if unknown_total > 0 else 0.0
-        # Use min distance for AUROC (higher distance -> more unknown)
-        auroc = roc_auc_score(unknown_labels_mask, all_min_distances) if len(np.unique(unknown_labels_mask)) > 1 else float('nan')
+        auroc = roc_auc_score(unknown_labels_mask, all_min_distances) if len(np.unique(unknown_labels_mask)) > 1 else float('nan') # Higher distance -> more unknown
 
         labels_mapped_for_cm = all_labels.copy(); labels_mapped_for_cm[unknown_labels_mask] = -1
         cm_axis_labels_int, cm_axis_labels_names = self._get_cm_labels()
-        conf_matrix = confusion_matrix(labels_mapped_for_cm, all_preds, labels=cm_axis_labels_int)
-        _, _, f1_by_class, _ = precision_recall_fscore_support(labels_mapped_for_cm, all_preds, labels=cm_axis_labels_int, average=None, zero_division=0)
-        macro_f1 = np.mean(f1_by_class)
+        valid_cm_labels = set(cm_axis_labels_int)
+        filtered_labels_true = [l if l in valid_cm_labels else -1 for l in labels_mapped_for_cm]
+        filtered_labels_pred = [p if p in valid_cm_labels else -1 for p in all_preds]
+
+        conf_matrix = confusion_matrix(filtered_labels_true, filtered_labels_pred, labels=cm_axis_labels_int)
+        precision, recall, f1_by_class, _ = precision_recall_fscore_support(filtered_labels_true, filtered_labels_pred, labels=cm_axis_labels_int, average=None, zero_division=0)
+        macro_f1 = np.mean(f1_by_class) if len(f1_by_class) > 0 else 0.0
 
         print("\nADB OSR Evaluation Summary:")
         print(f"  Distance Metric: {self.distance_metric}")
@@ -1651,24 +1692,29 @@ class ADBOSR(OSRAlgorithm):
                    'predictions': all_preds, 'labels': all_labels, 'features': all_features, 'distances': all_distances, 'min_distances': all_min_distances}
         return results
 
-    def visualize(self, results):
+    def visualize(self, results: dict):
+        # ... (previous visualize implementation, ensure it uses self.model.get_radii() for avg radius plot) ...
         print("[ADBOSR Visualize] Generating plots..."); os.makedirs("results", exist_ok=True)
         base_filename = f"results/adb_osr_{self.args.dataset}_{self.args.seen_class_ratio}"
+        if 'labels' not in results or len(results['labels']) == 0: print("No data to visualize."); return
+
         labels_np = results['labels']; unknown_labels_mask = self.datamodule._determine_unknown_labels(labels_np)
         min_distances = results['min_distances']
 
         if len(np.unique(unknown_labels_mask)) > 1: # ROC
-            fpr, tpr, _ = roc_curve(unknown_labels_mask, min_distances); roc_auc_val = auc(fpr, tpr) # Higher dist -> more unknown
+            fpr, tpr, _ = roc_curve(unknown_labels_mask, min_distances); roc_auc_val = auc(fpr, tpr)
             plt.figure(figsize=(7, 6)); plt.plot(fpr, tpr, lw=2, label=f'AUC={roc_auc_val:.3f}'); plt.plot([0,1],[0,1],'k--'); plt.xlabel('FPR'); plt.ylabel('TPR'); plt.title('ROC Curve (ADB)'); plt.legend(); plt.grid(); plt.tight_layout(); plt.savefig(f"{base_filename}_roc.png"); plt.close(); print("  ROC saved.")
         else: print("  Skipping ROC.")
 
         # Min Distance Dist
         plt.figure(figsize=(7, 5)); sns.histplot(data=pd.DataFrame({'dist': min_distances, 'Known': ~unknown_labels_mask}), x='dist', hue='Known', kde=True, stat='density', common_norm=False)
-        mean_radius = F.relu(self.model.radii.detach()).mean().item() # Avg positive radius
+        # --- 수정: get_radii() 사용 ---
+        mean_radius = self.model.get_radii().detach().mean().item()
         plt.axvline(mean_radius, color='g', linestyle=':', label=f'Avg Radius~{mean_radius:.3f}')
+        # --- ---
         plt.title(f'Min Distance Distribution (ADB - {self.distance_metric})'); plt.xlabel(f'Min {self.distance_metric.capitalize()} Distance'); plt.legend(); plt.grid(alpha=0.5); plt.tight_layout(); plt.savefig(f"{base_filename}_distance.png"); plt.close(); print("  Distance dist saved.")
 
-        # t-SNE (Optional)
+        # t-SNE (Keep as before)
         if 'features' in results and len(results['features']) > 100 and results['features'].shape[1] > 2:
              try:
                  from sklearn.manifold import TSNE
@@ -1677,10 +1723,10 @@ class ADBOSR(OSRAlgorithm):
                  n_samples = features.shape[0]; max_tsne = 5000
                  indices = np.random.choice(n_samples, min(n_samples, max_tsne), replace=False)
                  features_sub = features[indices]; unknown_sub = unknown_labels_mask[indices]
-                 if self.distance_metric == 'cosine': # Normalize centers for t-SNE if using cosine
-                      centers = F.normalize(torch.from_numpy(centers), p=2, dim=-1).numpy()
+                 # Normalize centers for t-SNE if using cosine distance
+                 centers_norm = F.normalize(torch.from_numpy(centers), p=2, dim=-1).numpy()
 
-                 combined = np.vstack([features_sub, centers])
+                 combined = np.vstack([features_sub, centers_norm]) # Embed normalized centers
                  tsne = TSNE(n_components=2, random_state=self.args.random_seed, perplexity=min(30, combined.shape[0]-1), n_iter=300, init='pca', learning_rate='auto')
                  reduced = tsne.fit_transform(combined)
                  reduced_feats, reduced_centers = reduced[:-len(centers)], reduced[-len(centers):]
@@ -1694,11 +1740,12 @@ class ADBOSR(OSRAlgorithm):
              except Exception as e: print(f"  t-SNE error: {e}")
         else: print("  Skipping t-SNE (few samples or low dim).")
 
-
-        # CM
+        # CM (Keep as before)
         plt.figure(figsize=(max(6, len(results['confusion_matrix_labels'])*0.6), max(5, len(results['confusion_matrix_labels'])*0.5))); sns.heatmap(results['confusion_matrix'], annot=True, fmt='d', cmap='Blues', xticklabels=results['confusion_matrix_names'], yticklabels=results['confusion_matrix_names'], annot_kws={"size": 8}); plt.xlabel('Predicted'); plt.ylabel('True'); plt.title('Confusion Matrix (ADB)'); plt.xticks(rotation=45, ha='right', fontsize=9); plt.yticks(rotation=0, fontsize=9); plt.tight_layout(); plt.savefig(f"{base_filename}_confusion.png"); plt.close(); print("  CM saved.")
         print("[ADBOSR Visualize] Finished.")
 
+
+# --- END OF studio.py (ADBOSR fix only) ---
 
 # =============================================================================
 # Training and Evaluation Functions (Updated)

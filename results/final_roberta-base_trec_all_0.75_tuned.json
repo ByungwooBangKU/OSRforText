@@ -1,9 +1,9 @@
 {
   "threshold": {
-    "accuracy": 0.9252669039145908,
-    "auroc": 0.7886405908978509,
-    "f1_score": 0.7068746812695857,
-    "unknown_detection_rate": 0.1661631419939577,
+    "accuracy": 0.9395017793594306,
+    "auroc": 0.7963627957983463,
+    "f1_score": 0.6838229288650888,
+    "unknown_detection_rate": 0.09063444108761329,
     "confusion_matrix_labels": [
       -1,
       0,
@@ -20,10 +20,10 @@
     ]
   },
   "openmax": {
-    "accuracy": 0.8683274021352313,
-    "auroc": 0.7447828751438003,
-    "f1_score": 0.7185801790938121,
-    "unknown_detection_rate": 0.338368580060423,
+    "accuracy": 0.8736654804270463,
+    "auroc": 0.7198933459483288,
+    "f1_score": 0.689292637344793,
+    "unknown_detection_rate": 0.33534743202416917,
     "confusion_matrix_labels": [
       -1,
       0,
@@ -40,13 +40,30 @@
     ]
   },
   "crosr": {
-    "error": "Unable to allocate 61.4 GiB for an array with shape (8241674921,) and data type float64"
+    "accuracy": 0.9519572953736655,
+    "auroc": 0.6674156820161057,
+    "f1_score": 0.6346782318531867,
+    "unknown_detection_rate": 0.0,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      5
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "ABBR",
+      "DESC",
+      "ENTY",
+      "NUM"
+    ]
   },
   "doc": {
     "accuracy": 0.9110320284697508,
-    "auroc": 0.7556471815161647,
-    "f1_score": 0.725544137389593,
-    "unknown_detection_rate": 0.2326283987915408,
+    "auroc": 0.7600875165303027,
+    "f1_score": 0.7216621346673456,
+    "unknown_detection_rate": 0.18429003021148035,
     "confusion_matrix_labels": [
       -1,
       0,
@@ -64,7 +81,7 @@
   },
   "adb": {
     "accuracy": 0.0,
-    "auroc": 0.3524825020696477,
+    "auroc": 0.5281767747900786,
     "f1_score": 0.10816993464052287,
     "unknown_detection_rate": 1.0,
     "confusion_matrix_labels": [
