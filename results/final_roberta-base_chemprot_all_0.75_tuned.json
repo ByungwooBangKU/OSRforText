@@ -1,0 +1,162 @@
+{
+  "threshold": {
+    "accuracy": 0.9160173160173161,
+    "auroc": 0.8038851289555514,
+    "f1_score": 0.61670669801078,
+    "unknown_detection_rate": 0.09859154929577464,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4,
+      5,
+      7,
+      8,
+      9,
+      11,
+      12
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "ACTIVATOR",
+      "AGONIST",
+      "AGONIST-ACTIVATOR",
+      "ANTAGONIST",
+      "DOWNREGULATOR",
+      "INDIRECT-UPREGULATOR",
+      "INHIBITOR",
+      "PRODUCT-OF",
+      "SUBSTRATE_PRODUCT-OF",
+      "UPREGULATOR"
+    ]
+  },
+  "openmax": {
+    "accuracy": 0.9082251082251083,
+    "auroc": 0.825287482470581,
+    "f1_score": 0.6548561217365375,
+    "unknown_detection_rate": 0.14929577464788732,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4,
+      5,
+      7,
+      8,
+      9,
+      11,
+      12
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "ACTIVATOR",
+      "AGONIST",
+      "AGONIST-ACTIVATOR",
+      "ANTAGONIST",
+      "DOWNREGULATOR",
+      "INDIRECT-UPREGULATOR",
+      "INHIBITOR",
+      "PRODUCT-OF",
+      "SUBSTRATE_PRODUCT-OF",
+      "UPREGULATOR"
+    ]
+  },
+  "crosr": {
+    "accuracy": 0.9307359307359307,
+    "auroc": 0.8357600146332541,
+    "f1_score": 0.6308123750565962,
+    "unknown_detection_rate": 0.0,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4,
+      5,
+      7,
+      8,
+      9,
+      11,
+      12
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "ACTIVATOR",
+      "AGONIST",
+      "AGONIST-ACTIVATOR",
+      "ANTAGONIST",
+      "DOWNREGULATOR",
+      "INDIRECT-UPREGULATOR",
+      "INHIBITOR",
+      "PRODUCT-OF",
+      "SUBSTRATE_PRODUCT-OF",
+      "UPREGULATOR"
+    ]
+  },
+  "doc": {
+    "accuracy": 0.8848484848484849,
+    "auroc": 0.8350368879946345,
+    "f1_score": 0.6639469875148617,
+    "unknown_detection_rate": 0.5126760563380282,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4,
+      5,
+      7,
+      8,
+      9,
+      11,
+      12
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "ACTIVATOR",
+      "AGONIST",
+      "AGONIST-ACTIVATOR",
+      "ANTAGONIST",
+      "DOWNREGULATOR",
+      "INDIRECT-UPREGULATOR",
+      "INHIBITOR",
+      "PRODUCT-OF",
+      "SUBSTRATE_PRODUCT-OF",
+      "UPREGULATOR"
+    ]
+  },
+  "adb": {
+    "accuracy": 0.48138528138528136,
+    "auroc": 0.5290457898908604,
+    "f1_score": 0.048930740121446804,
+    "unknown_detection_rate": 0.0,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4,
+      5,
+      7,
+      8,
+      9,
+      11,
+      12
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "ACTIVATOR",
+      "AGONIST",
+      "AGONIST-ACTIVATOR",
+      "ANTAGONIST",
+      "DOWNREGULATOR",
+      "INDIRECT-UPREGULATOR",
+      "INHIBITOR",
+      "PRODUCT-OF",
+      "SUBSTRATE_PRODUCT-OF",
+      "UPREGULATOR"
+    ]
+  }
+}

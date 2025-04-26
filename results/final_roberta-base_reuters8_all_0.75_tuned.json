@@ -1,0 +1,122 @@
+{
+  "threshold": {
+    "accuracy": 0.9875239923224568,
+    "auroc": 0.9678680599985783,
+    "f1_score": 0.8877470720442476,
+    "unknown_detection_rate": 0.4444444444444444,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4,
+      5,
+      7
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "acq",
+      "crude",
+      "earn",
+      "interest",
+      "money-fx",
+      "trade"
+    ]
+  },
+  "openmax": {
+    "accuracy": 0.9846449136276392,
+    "auroc": 0.9700717992464633,
+    "f1_score": 0.8397313965809944,
+    "unknown_detection_rate": 0.18518518518518517,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4,
+      5,
+      7
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "acq",
+      "crude",
+      "earn",
+      "interest",
+      "money-fx",
+      "trade"
+    ]
+  },
+  "crosr": {
+    "accuracy": 0.9875239923224568,
+    "auroc": 0.9840406625435416,
+    "f1_score": 0.918869321259138,
+    "unknown_detection_rate": 0.6296296296296297,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4,
+      5,
+      7
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "acq",
+      "crude",
+      "earn",
+      "interest",
+      "money-fx",
+      "trade"
+    ]
+  },
+  "doc": {
+    "accuracy": 0.9625719769673704,
+    "auroc": 0.9819080116584914,
+    "f1_score": 0.8793984897796717,
+    "unknown_detection_rate": 0.7407407407407407,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4,
+      5,
+      7
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "acq",
+      "crude",
+      "earn",
+      "interest",
+      "money-fx",
+      "trade"
+    ]
+  },
+  "adb": {
+    "accuracy": 0.5249520153550864,
+    "auroc": 0.8001706120708041,
+    "f1_score": 0.09671145685997172,
+    "unknown_detection_rate": 0.0,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      4,
+      5,
+      7
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "acq",
+      "crude",
+      "earn",
+      "interest",
+      "money-fx",
+      "trade"
+    ]
+  }
+}

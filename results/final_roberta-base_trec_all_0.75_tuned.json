@@ -1,9 +1,9 @@
 {
   "threshold": {
-    "accuracy": 0.9395017793594306,
-    "auroc": 0.7963627957983463,
-    "f1_score": 0.6838229288650888,
-    "unknown_detection_rate": 0.09063444108761329,
+    "accuracy": 0.896797153024911,
+    "auroc": 0.8071572179634667,
+    "f1_score": 0.6799963770858924,
+    "unknown_detection_rate": 0.2628398791540785,
     "confusion_matrix_labels": [
       -1,
       0,
@@ -20,10 +20,10 @@
     ]
   },
   "openmax": {
-    "accuracy": 0.8736654804270463,
-    "auroc": 0.7198933459483288,
-    "f1_score": 0.689292637344793,
-    "unknown_detection_rate": 0.33534743202416917,
+    "accuracy": 0.8469750889679716,
+    "auroc": 0.7521529711539496,
+    "f1_score": 0.6392276857081269,
+    "unknown_detection_rate": 0.311178247734139,
     "confusion_matrix_labels": [
       -1,
       0,
@@ -40,9 +40,9 @@
     ]
   },
   "crosr": {
-    "accuracy": 0.9519572953736655,
-    "auroc": 0.6674156820161057,
-    "f1_score": 0.6346782318531867,
+    "accuracy": 0.9448398576512456,
+    "auroc": 0.42174043930287813,
+    "f1_score": 0.5891240610450098,
     "unknown_detection_rate": 0.0,
     "confusion_matrix_labels": [
       -1,
@@ -60,10 +60,10 @@
     ]
   },
   "doc": {
-    "accuracy": 0.9110320284697508,
-    "auroc": 0.7600875165303027,
-    "f1_score": 0.7216621346673456,
-    "unknown_detection_rate": 0.18429003021148035,
+    "accuracy": 0.9377224199288257,
+    "auroc": 0.7253389384051349,
+    "f1_score": 0.7404136421136946,
+    "unknown_detection_rate": 0.20241691842900303,
     "confusion_matrix_labels": [
       -1,
       0,
@@ -81,7 +81,7 @@
   },
   "adb": {
     "accuracy": 0.0,
-    "auroc": 0.5281767747900786,
+    "auroc": 0.4864344002322306,
     "f1_score": 0.10816993464052287,
     "unknown_detection_rate": 1.0,
     "confusion_matrix_labels": [
