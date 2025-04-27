@@ -1,48 +1,8 @@
 {
   "threshold": {
-    "accuracy": 0.896797153024911,
-    "auroc": 0.8071572179634667,
-    "f1_score": 0.6799963770858924,
-    "unknown_detection_rate": 0.2628398791540785,
-    "confusion_matrix_labels": [
-      -1,
-      0,
-      1,
-      2,
-      5
-    ],
-    "confusion_matrix_names": [
-      "Unknown",
-      "ABBR",
-      "DESC",
-      "ENTY",
-      "NUM"
-    ]
-  },
-  "openmax": {
-    "accuracy": 0.8469750889679716,
-    "auroc": 0.7521529711539496,
-    "f1_score": 0.6392276857081269,
-    "unknown_detection_rate": 0.311178247734139,
-    "confusion_matrix_labels": [
-      -1,
-      0,
-      1,
-      2,
-      5
-    ],
-    "confusion_matrix_names": [
-      "Unknown",
-      "ABBR",
-      "DESC",
-      "ENTY",
-      "NUM"
-    ]
-  },
-  "crosr": {
-    "accuracy": 0.9448398576512456,
-    "auroc": 0.42174043930287813,
-    "f1_score": 0.5891240610450098,
+    "accuracy": 0.9483985765124555,
+    "auroc": 0.7764699874208427,
+    "f1_score": 0.6359769306096711,
     "unknown_detection_rate": 0.0,
     "confusion_matrix_labels": [
       -1,
@@ -59,11 +19,51 @@
       "NUM"
     ]
   },
+  "openmax": {
+    "accuracy": 0.8985765124555161,
+    "auroc": 0.7274032103729667,
+    "f1_score": 0.7041735843769847,
+    "unknown_detection_rate": 0.18731117824773413,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      5
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "ABBR",
+      "DESC",
+      "ENTY",
+      "NUM"
+    ]
+  },
+  "crosr": {
+    "accuracy": 0.5871886120996441,
+    "auroc": 0.435142079969036,
+    "f1_score": 0.43443868414023523,
+    "unknown_detection_rate": 0.3564954682779456,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      5
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "ABBR",
+      "DESC",
+      "ENTY",
+      "NUM"
+    ]
+  },
   "doc": {
-    "accuracy": 0.9377224199288257,
-    "auroc": 0.7253389384051349,
-    "f1_score": 0.7404136421136946,
-    "unknown_detection_rate": 0.20241691842900303,
+    "accuracy": 0.9501779359430605,
+    "auroc": 0.786858543613121,
+    "f1_score": 0.652412517423626,
+    "unknown_detection_rate": 0.01812688821752266,
     "confusion_matrix_labels": [
       -1,
       0,
@@ -80,10 +80,10 @@
     ]
   },
   "adb": {
-    "accuracy": 0.0,
-    "auroc": 0.4864344002322306,
-    "f1_score": 0.10816993464052287,
-    "unknown_detection_rate": 1.0,
+    "accuracy": 0.9092526690391459,
+    "auroc": 0.7487958413520981,
+    "f1_score": 0.5069844452863781,
+    "unknown_detection_rate": 0.10574018126888217,
     "confusion_matrix_labels": [
       -1,
       0,

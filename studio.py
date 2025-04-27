@@ -654,10 +654,25 @@ class DOCRobertaClassifier(pl.LightningModule):
 
 class RobertaADB(pl.LightningModule):
     """RoBERTa model with Adaptive Decision Boundary (ADB) components."""
-    def __init__( self, model_name: str = "roberta-base", num_classes: int = 20, learning_rate: float = 1e-3,
-                  weight_decay: float = 0.0, warmup_steps: int = 0, total_steps: int = 0,
-                  delta: float = 0.1, alpha: float = 0.1, freeze_backbone: bool = True ):
+    def __init__( self,
+                  model_name: str = "roberta-base",
+                  num_classes: int = 20,
+                  # --- lr 인자가 여기에 있는지 확인 ---
+                  lr: float = 2e-5, # Backbone fine-tuning 시 사용할 기본 LR
+                  # --- ---
+                  learning_rate: float = 1e-3, # ADB 파라미터용 LR (기존 learning_rate -> lr_adb 역할)
+                  weight_decay: float = 0.0,
+                  warmup_steps: int = 0, # Backbone fine-tuning 시 사용
+                  total_steps: int = 0,  # Backbone fine-tuning 시 사용
+                  delta: float = 0.1,
+                  alpha: float = 0.1,
+                  freeze_backbone: bool = True ):
         super().__init__()
+            # lr도 저장하는지 확인
+        self.save_hyperparameters(ignore=['model_name'])
+        # ... (나머지 __init__ 코드) ...
+        self.lr = lr # lr 저장 확인
+        self.lr_adb = learning_rate # lr_adb 저장 확인
         self.save_hyperparameters(ignore=['model_name'])
         self.config = RobertaConfig.from_pretrained(model_name)
         self.roberta = RobertaModel.from_pretrained(model_name, config=self.config)
@@ -1853,57 +1868,103 @@ MODEL_CLASS_MAP = {
 }
 MODEL_NEEDS_SPECIAL_TRAINING = ['crosr', 'doc', 'adb']
 
-
-
 def _prepare_evaluation(method_name, current_model, datamodule, args, osr_algorithm_class):
     """
-    Handles model checking, potential retraining (outside tuning), and parameter setup
+    Handles model checking, potential retraining, and parameter setup
     (tuning with retraining OR loading defaults/saved).
     """
     print(f"\n--- Preparing for {method_name.upper()} OSR Evaluation ---")
     target_model_class = MODEL_CLASS_MAP.get(method_name if method_name in MODEL_NEEDS_SPECIAL_TRAINING else 'standard')
     model_to_evaluate_finally = None # 최종 평가에 사용할 모델
+    needs_final_training = False # 최종 평가 전 모델 재학습 필요 여부
 
     # --- Hyperparameter Tuning Logic (with Retraining) ---
-    if args.parameter_search and method_name == args.osr_method: # 해당 메소드만 튜닝
+    # 수정: args.osr_method가 'all'이거나 현재 메소드와 일치할 때 튜닝 실행
+    if args.parameter_search and (args.osr_method == 'all' or method_name == args.osr_method):
         print(f"Starting Optuna hyperparameter search for {method_name.upper()} (with retraining)...")
         tuner = OptunaHyperparameterTuner(method_name, datamodule, args)
 
         # Define the function that trains AND evaluates for one trial
         def train_and_evaluate_trial(trial_args):
-            print(f"\n  Starting Training for Trial with LR={trial_args.lr_adb:.5f}, Alpha={trial_args.param_adb_alpha:.4f}, Delta={trial_args.param_adb_delta:.4f}, Freeze={trial_args.adb_freeze_backbone}")
+            print(f"\n  Starting Training & Eval for Trial...")
             # 1. Initialize the target model with trial hyperparameters
             num_classes = datamodule.num_seen_classes
-            init_kwargs = {'model_name': trial_args.model, 'num_classes': num_classes, 'weight_decay': trial_args.weight_decay}
+            init_kwargs = {
+                'model_name': trial_args.model,
+                'num_classes': num_classes,
+                'weight_decay': trial_args.weight_decay,
+                # Pass general LR for potential backbone use or other models
+                'lr': trial_args.lr
+            }
             # Add method-specific init args based on trial_args
             if target_model_class == RobertaADB:
-                 init_kwargs.update({'learning_rate': trial_args.lr_adb, 'delta': trial_args.param_adb_delta, 'alpha': trial_args.param_adb_alpha, 'freeze_backbone': trial_args.adb_freeze_backbone})
-            elif target_model_class == RobertaAutoencoder: # For CROSR
+                init_kwargs.update({
+                    'learning_rate': trial_args.lr_adb, # ADB 파라미터용 LR
+                    'delta': trial_args.param_adb_delta,
+                    'alpha': trial_args.param_adb_alpha,
+                    'freeze_backbone': trial_args.adb_freeze_backbone
+                })
+                 # --- ---
+            elif target_model_class == RobertaAutoencoder:
                  init_kwargs.update({'learning_rate': trial_args.lr, 'reconstruction_weight': trial_args.param_crosr_recon_weight})
-            elif target_model_class == DOCRobertaClassifier: # For DOC
+            elif target_model_class == DOCRobertaClassifier:
                  init_kwargs.update({'learning_rate': trial_args.lr})
-            else: # Standard Classifier
-                 init_kwargs.update({'learning_rate': trial_args.lr})
+            # Standard Classifier uses 'lr' already included
 
+            print(f"  Initializing {target_model_class.__name__} with: {init_kwargs}")
             trial_model = target_model_class(**init_kwargs)
 
+            print(f"  Initializing {target_model_class.__name__} with: {init_kwargs}")
+            trial_model = target_model_class(**init_kwargs)
+            # --- ---
+
             # 2. Train the model for this trial
-            # Use fewer epochs during tuning for speed? Or full epochs? Let's use full for now.
-            # Consider creating a temporary checkpoint dir per trial?
-            checkpoint_path = train_model(trial_model, datamodule, trial_args)
+            # Use a reduced number of epochs during tuning for speed?
+            tuning_epochs = max(1, args.epochs // 2) # Example: Use half epochs for tuning
+            print(f"  Training trial model for {tuning_epochs} epochs...")
+            trial_args_copy = argparse.Namespace(**vars(trial_args)) # Copy args for training
+            trial_args_copy.epochs = tuning_epochs # Use reduced epochs for this trial's training
+
+            # --- 중요: 임시 체크포인트 디렉토리 사용 ---
+            trial_ckpt_dir = f"checkpoints/trial_{method_name}_{trial_args.dataset}_{datetime.now().strftime('%H%M%S%f')}"
+            trial_args_copy.osr_method = f"trial_{method_name}" # Avoid overwriting main checkpoints
+            # --- ---
+
+            checkpoint_path = train_model(trial_model, datamodule, trial_args_copy) # Pass trial_args_copy
             if checkpoint_path is None or not os.path.exists(checkpoint_path):
                  print("  Trial Training Failed. Returning failure score.")
-                 return {}, -1e9 # Return empty results and failure score
+                 # Clean up temporary trial checkpoint dir
+                 if os.path.exists(trial_ckpt_dir): shutil.rmtree(trial_ckpt_dir)
+                 return {}, -1e9
 
-            # 3. Load the best model from training
-            trained_trial_model = target_model_class.load_from_checkpoint(checkpoint_path)
+            # 3. Load the best model from trial training
+            print(f"  Loading best model from trial checkpoint: {checkpoint_path}")
+            # --- 중요: load_from_checkpoint에 hparams_file 인자 추가 (PL 버전에 따라 필요할 수 있음) ---
+            try:
+                # Try loading directly first
+                trained_trial_model = target_model_class.load_from_checkpoint(checkpoint_path)
+            except TypeError:
+                # If TypeError occurs (e.g., unexpected keyword argument 'map_location'), try without it
+                # Or if it complains about missing hparams, try providing the path
+                print("  Direct load failed, trying with hparams_file=None...")
+                try:
+                    trained_trial_model = target_model_class.load_from_checkpoint(checkpoint_path, hparams_file=None, map_location='cpu') # Load to CPU first?
+                    trained_trial_model.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')) # Move to correct device
+                except Exception as load_e:
+                     print(f"  Failed to load trial checkpoint: {load_e}")
+                     if os.path.exists(trial_ckpt_dir): shutil.rmtree(trial_ckpt_dir)
+                     return {}, -1e9
+            # --- ---
 
             # 4. Evaluate the trained model
-            evaluator = osr_algorithm_class(trained_trial_model, datamodule, trial_args)
-            # Use a smaller subset for faster tuning evaluation? Or full test set? Full for now.
+            print("  Evaluating trial model...")
+            evaluator = osr_algorithm_class(trained_trial_model, datamodule, trial_args) # Use original trial_args for eval params
             results = evaluator.evaluate(datamodule.test_dataloader())
 
-            # 5. Extract score and return
+            # 5. Clean up trial checkpoint directory
+            if os.path.exists(trial_ckpt_dir): shutil.rmtree(trial_ckpt_dir)
+
+            # 6. Extract score and return
             score = results.get(args.tuning_metric)
             if score is None or not np.isfinite(score):
                  print(f"  Warning: Metric '{args.tuning_metric}' invalid ({score}) for trial.")
@@ -1914,17 +1975,16 @@ def _prepare_evaluation(method_name, current_model, datamodule, args, osr_algori
         # Pass the combined function to the tuner
         best_params, best_trial_metrics = tuner.tune(train_and_evaluate_trial)
 
-        # Apply best parameters for the *final* run (which might involve one last retraining)
-        print(f"Applying best tuned parameters for final {method_name.upper()} evaluation:")
+        # Apply best parameters for the *final* run
+        print(f"\nApplying best tuned parameters for final {method_name.upper()} evaluation:")
         for name, value in best_params.items():
             setattr(args, name, value); print(f"  {name}: {value}")
         # Set flag to retrain one last time with best params
-        needs_final_training = True
+        needs_final_training = True # Always retrain with best params after tuning
 
     else:
-        # --- Logic for No Tuning or Other Methods ---
-        needs_final_training = False # Assume no final retraining needed unless type mismatch
-        # Load existing best parameters or use defaults
+        # --- Logic for No Tuning ---
+        needs_final_training = False
         best_params = load_best_params(method_name, args.dataset, args.seen_class_ratio)
         param_source = "loaded from previous tuning"
         if not best_params:
@@ -1932,6 +1992,7 @@ def _prepare_evaluation(method_name, current_model, datamodule, args, osr_algori
             param_source = "defaults"
         print(f"Applying parameters ({param_source}) for final {method_name.upper()} evaluation:")
         for name, value in best_params.items():
+            # Apply loaded/default params to the main args
             setattr(args, name, value); print(f"  {name}: {value}")
 
         # Check model type mismatch even when not tuning
@@ -1941,28 +2002,47 @@ def _prepare_evaluation(method_name, current_model, datamodule, args, osr_algori
 
 
     # --- Final Model Preparation ---
+    
+    
     if needs_final_training:
-         print(f"\nTraining final {target_model_class.__name__} model with best/default parameters...")
-         num_classes = datamodule.num_seen_classes
-         init_kwargs = {'model_name': args.model, 'num_classes': num_classes, 'weight_decay': args.weight_decay}
-         if target_model_class == RobertaADB: init_kwargs.update({'learning_rate': args.lr_adb, 'delta': args.param_adb_delta, 'alpha': args.param_adb_alpha, 'freeze_backbone': args.adb_freeze_backbone})
-         elif target_model_class == RobertaAutoencoder: init_kwargs.update({'learning_rate': args.lr, 'reconstruction_weight': args.param_crosr_recon_weight})
-         elif target_model_class == DOCRobertaClassifier: init_kwargs.update({'learning_rate': args.lr})
-         else: init_kwargs.update({'learning_rate': args.lr})
+        print(f"\nTraining final {target_model_class.__name__} model with best/default parameters...")
+        num_classes = datamodule.num_seen_classes
+        init_kwargs = {'model_name': args.model, 'num_classes': num_classes, 'weight_decay': args.weight_decay, 'lr': args.lr} # 기본 lr 전달
+        if target_model_class == RobertaADB:
+            init_kwargs.pop('lr', None)
+            # --- 수정: lr과 learning_rate(->lr_adb) 구분 전달 ---
+            init_kwargs.update({'learning_rate': args.lr_adb, 'delta': args.param_adb_delta, 'alpha': args.param_adb_alpha, 'freeze_backbone': args.adb_freeze_backbone})
+            # --- ---
+        elif target_model_class == RobertaAutoencoder: init_kwargs.update({'learning_rate': args.lr, 'reconstruction_weight': args.param_crosr_recon_weight})
+        elif target_model_class == DOCRobertaClassifier: init_kwargs.update({'learning_rate': args.lr})
+        # Standard Classifier uses 'lr' already included
 
-         final_model_instance = target_model_class(**init_kwargs)
-         final_checkpoint_path = train_model(final_model_instance, datamodule, args)
-         if final_checkpoint_path is None or not os.path.exists(final_checkpoint_path):
-              raise RuntimeError(f"Failed to train final model for {method_name.upper()}.")
-         print(f"Loading final trained model from: {final_checkpoint_path}")
-         model_to_evaluate_finally = target_model_class.load_from_checkpoint(final_checkpoint_path)
+        final_model_instance = target_model_class(**init_kwargs)
+        
+        # Use full epochs for final training
+        final_args = argparse.Namespace(**vars(args))
+        final_args.epochs = args.epochs # Ensure full epochs are used
+        final_checkpoint_path = train_model(final_model_instance, datamodule, final_args) # Pass final_args
+        if final_checkpoint_path is None or not os.path.exists(final_checkpoint_path):
+            raise RuntimeError(f"Failed to train final model for {method_name.upper()}.")
+        print(f"Loading final trained model from: {final_checkpoint_path}")
+        # --- 중요: load_from_checkpoint 수정 ---
+        try:
+            model_to_evaluate_finally = target_model_class.load_from_checkpoint(final_checkpoint_path)
+        except TypeError:
+            print("  Direct load failed, trying with hparams_file=None...")
+            try:
+                model_to_evaluate_finally = target_model_class.load_from_checkpoint(final_checkpoint_path, hparams_file=None, map_location='cpu')
+                model_to_evaluate_finally.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+            except Exception as load_e:
+                raise RuntimeError(f"Failed to load final checkpoint: {load_e}")
+        # --- ---
     else:
          print("Using the initially provided/loaded model for final evaluation.")
-         model_to_evaluate_finally = current_model # Use the one passed in
+         model_to_evaluate_finally = current_model
 
-    return model_to_evaluate_finally # Return the model ready for final evaluation
+    return model_to_evaluate_finally
 
-# --- Main Evaluation Functions per Method (Simplified) ---
 
 def evaluate_threshold_osr(base_model, datamodule, args, all_results):
     """Evaluates Threshold OSR, handles tuning."""
@@ -2235,8 +2315,12 @@ def parse_args():
     parser.add_argument('-param_doc_k', type=float, default=None, help='k-sigma factor for DOC.')
     parser.add_argument('-param_adb_distance', type=str, default='cosine', choices=['cosine', 'euclidean'], help='Distance metric for ADB.')
     parser.add_argument('-param_adb_delta', type=float, default=0.1, help='Margin delta for ADB training loss.')
-    parser.add_argument('-param_adb_alpha', type=float, default=0.1, help='Weight alpha for ADB training loss.')
-    parser.add_argument('-adb_freeze_backbone', action=argparse.BooleanOptionalAction, default=True, help='Freeze backbone during ADB training.')
+    parser.add_argument('-param_adb_alpha', type=float, default=0.5, help='Weight alpha for ADB training loss.')
+#    parser.add_argument('-adb_freeze_backbone', action=argparse.BooleanOptionalAction, default=True, help='Freeze backbone during ADB training.')
+    parser.add_argument('--adb_freeze_backbone',
+                    action=argparse.BooleanOptionalAction, # 이 액션 사용
+                    default=True, # 기본값은 동결 (True)
+                    help='Freeze backbone during ADB training (default: True). Use --no-adb_freeze_backbone to disable freezing.')    
     # --- Hyperparameter Tuning Arguments ---
     parser.add_argument('-parameter_search', action='store_true', help='Enable Optuna hyperparameter tuning.')
     parser.add_argument('-tuning_metric', type=str, default='f1_score', choices=['accuracy', 'auroc', 'f1_score', 'unknown_detection_rate'], help='Metric to optimize during tuning.')

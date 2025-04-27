@@ -1,0 +1,22 @@
+{
+  "adb": {
+    "accuracy": 0.9234875444839857,
+    "auroc": 0.6266409349431787,
+    "f1_score": 0.5181711733820153,
+    "unknown_detection_rate": 0.10876132930513595,
+    "confusion_matrix_labels": [
+      -1,
+      0,
+      1,
+      2,
+      5
+    ],
+    "confusion_matrix_names": [
+      "Unknown",
+      "ABBR",
+      "DESC",
+      "ENTY",
+      "NUM"
+    ]
+  }
+}
